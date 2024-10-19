@@ -13,7 +13,7 @@ const __dirname = dirname(__filename);
 
 console.log('El directorio actual es:', __dirname);
 
-const infoPath = path.join(__dirname, 'info.txt');
+const infoPath = path.join(__dirname, 'src/info.txt');
 console.log('Buscando info.txt en:', infoPath);
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
