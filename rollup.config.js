@@ -1,4 +1,5 @@
-import typescript from 'rollup-plugin-typescript2'
+import typescript from 'rollup-plugin-typescript2';
+import copy from 'rollup-plugin-copy';
 
 export default {
     input: 'src/app.ts',
@@ -7,7 +8,14 @@ export default {
         format: 'esm',
     },
     onwarn: (warning) => {
-        if (warning.code === 'UNRESOLVED_IMPORT') return
+        if (warning.code === 'UNRESOLVED_IMPORT') return;
     },
-    plugins: [typescript()],
-}
+    plugins: [
+        typescript(),
+        copy({
+            targets: [
+                { src: 'src/info.txt', dest: 'dist' }  // Copia el archivo info.txt a dist/src
+            ]
+        })
+    ],
+};
