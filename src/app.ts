@@ -7,6 +7,8 @@ import * as path from 'path';
 import { fileURLToPath } from 'url'; // Import necesario
 import { dirname } from 'path'; // Import necesario
 
+
+
 // Simular __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
