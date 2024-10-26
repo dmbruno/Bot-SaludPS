@@ -10,6 +10,6 @@ Av. Del Bicentenario 1518, Salta, Argentina.
 - 📅 *Martes, Miercoles y Viernes*: 09:00 AM - 12:00 AM.
 - 📅 *Jueves*: 08:00 AM - 11:00 AM.
 
-📞 *Contacto*: Puedes llamarnos al teléfono XXXXXXXXXX.
+
 
 🔙 Para volver al menú principal, escribe *volver*.
