@@ -13,11 +13,11 @@ import { dirname } from 'path'; // Import necesario
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log('El directorio actual es:', __dirname);
 
-const infoPath = path.join(__dirname,'info.txt');
 
-console.log('Buscando info.txt en:', infoPath);
+const infoPath = path.join(__dirname, 'info.txt');
+
+
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 export const adapterProvider = createProvider(Provider);
@@ -76,7 +76,7 @@ const initialValidationFlow = addKeyword(['menu'])
   );
 
 // **Flujo para capturar Nombre y Apellido**
-const userDataFlow = addKeyword(['hola', 'hi', 'hello', 'buenas', 'turno','quiero','solicitar'])
+const userDataFlow = addKeyword(['hola', 'hi', 'hello', 'buenas', 'turno', 'quiero', 'solicitar'])
   .addAnswer(
     `👋 ¡Bienvenido/a a *Salud Pulmonar Salta*! 🏥\n\n` +
     `Para reservar un turno con nosotros por favor, escribe tu *Nombre y Apellido*:`,
@@ -103,7 +103,7 @@ const phoneFlow = addKeyword(['phone'])
         return gotoFlow(phoneFlow);
       }
       await state.update({ telefono: ctx.body });
-      await flowDynamic('📲 ¡Gracias por compartir tu número de teléfono! ☎️' );
+      await flowDynamic('📲 ¡Gracias por compartir tu número de teléfono! ☎️');
       return gotoFlow(obraSocialFlow);
     }
   );
@@ -111,7 +111,7 @@ const phoneFlow = addKeyword(['phone'])
 // **Flujo para capturar Obra Social**
 const obraSocialFlow = addKeyword(['social'])
   .addAnswer(
-    '🔰 Por último *Obra Social/Plan*: ',
+    '🔰 Por último *Obra Social y Plan de cobertura*: ',
     { capture: true },
     async (ctx, { state, flowDynamic, gotoFlow }) => {
       if (!isValidString(ctx.body)) {
@@ -125,12 +125,12 @@ const obraSocialFlow = addKeyword(['social'])
     }
   );
 
-  let inMainMenu = false;
+let inMainMenu = false;
 
 // **Menú Principal**
 const mainMenuFlow = addKeyword(['volver'])
   .addAnswer(
-    '🔸 Por favor selecciona una opción:\n\n1️⃣ Información sobre el lugar 🏥\n2️⃣ Reservas 📆',
+    '🔸 Por favor selecciona una opción:\n\n1️⃣ Información 🏥\n2️⃣ Turnos 📆',
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow }) => {
       const opcion = ctx.body.trim();
@@ -158,7 +158,7 @@ const availableMonthsFlow = addKeyword(['turnos'])
   .addAnswer(
     '✅ A continuación se muestran los meses con turnos disponibles desde el actual:',
     { capture: false },
-    async (ctx, { flowDynamic }) => {
+    async (ctx, { state, flowDynamic }) => {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const availableSlots = await getAvailableSlots();
@@ -167,7 +167,6 @@ const availableMonthsFlow = addKeyword(['turnos'])
         ...new Set(
           availableSlots
             .filter(slot => {
-              // Parseamos la fecha manualmente para evitar problemas de zonas horarias
               const dateParts = slot[1].split('-');
               const slotDate = new Date(
                 Number(dateParts[0]),
@@ -183,24 +182,42 @@ const availableMonthsFlow = addKeyword(['turnos'])
                 Number(dateParts[1]) - 1,
                 Number(dateParts[2])
               );
-              return monthNames[slotDate.getMonth()];
+              return slotDate.getMonth() + 1;
             })
         )
       ];
 
+      // Usamos un contador para numerar dinámicamente las opciones
+      const numberEmojis = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '1️⃣1️⃣', '1️⃣2️⃣'];
+
+      // Creamos el mensaje con los emojis de número y los nombres de los meses
       const monthsMessage = availableMonths
-        .map(month => `📆 ${month.charAt(0).toUpperCase() + month.slice(1)}`)
+        .map((monthNumber, index) => `${numberEmojis[index + 1]} ${monthNames[monthNumber - 1].charAt(0).toUpperCase() + monthNames[monthNumber - 1].slice(1)}`)
         .join('\n');
 
+      await state.update({ availableMonths });
       await flowDynamic(monthsMessage);
-      await flowDynamic('➡️ Por favor, escribe el nombre del mes que deseas reservar:');
+      await flowDynamic('➡️ Por favor, selecciona el *NUMERO* del mes que deseas reservar:');
     }
   )
   .addAnswer(
     '',
     { capture: true },
-    async (ctx, { state, flowDynamic }) => {
-      const selectedMonth = ctx.body.trim().toLowerCase();
+    async (ctx, { state, flowDynamic, gotoFlow }) => {
+      const userInput = ctx.body.trim();
+      const selectedOption = parseInt(userInput, 10);
+
+      const availableMonths = await state.get('availableMonths') || [];
+
+      // Verificamos si el número ingresado está dentro del rango de opciones
+      if (selectedOption < 1 || selectedOption > availableMonths.length) {
+        await flowDynamic('❌ Opción no válida. Por favor, selecciona un número de la lista.');
+        return gotoFlow(availableMonthsFlow);
+      }
+
+      // Convertimos la opción seleccionada a un índice de mes disponible
+      const selectedMonthNumber = availableMonths[selectedOption - 1];
+      const selectedMonth = monthNames[selectedMonthNumber - 1];
       await state.update({ selectedMonth });
 
       const now = new Date();
@@ -217,13 +234,8 @@ const availableMonthsFlow = addKeyword(['turnos'])
                 Number(dateParts[1]) - 1,
                 Number(dateParts[2])
               );
-              const slotMonth = monthNames[slotDate.getMonth()];
-              const slotYear = slotDate.getFullYear();
-
-              // Verifica que la fecha corresponda al mes seleccionado y que no haya pasado
               return (
-                slotMonth === selectedMonth &&
-                slotYear === today.getFullYear() &&
+                slotDate.getMonth() + 1 === selectedMonthNumber &&
                 slotDate >= today
               );
             })
@@ -231,34 +243,48 @@ const availableMonthsFlow = addKeyword(['turnos'])
         )
       ];
 
+      if (availableDates.length === 0) {
+        await flowDynamic(`😔 No hay fechas disponibles para *${selectedMonth}*.`);
+        return gotoFlow(mainMenuFlow);
+      }
+
       const datesMessage = availableDates.map(date => `📅 ${date}`).join('\n');
-      await flowDynamic(`✅ Fechas disponibles en ${selectedMonth}:\n\n${datesMessage}\n\n`);
-      await flowDynamic('➡️ Por favor, selecciona la fecha que deseas reservar (formato: YYYY-MM-DD) ó Puedes copiar y pegar la fecha 😉:');
+      await flowDynamic(`✅ Fechas disponibles en *${selectedMonth}*:\n\n${datesMessage}\n\n`);
+      await flowDynamic(
+        '➡️ Por favor, selecciona la fecha que deseas reservar (formato: YYYY-MM-DD) o puedes copiar y pegar la fecha 😉:'
+      );
     }
   )
   .addAnswer(
     '',
     { capture: true },
-    async (ctx, { state, flowDynamic }) => {
+    async (ctx, { state, flowDynamic, gotoFlow }) => {
       const selectedDate = ctx.body.trim();
       await state.update({ selectedDate });
 
       const availableSlots = await getAvailableSlots();
+
       const slotsForDate = availableSlots
-        .filter(slot => slot[1] === selectedDate && slot[4].toLowerCase() === 'disponible')
+        .filter(slot => {
+          const slotDate = slot[1];
+          return slotDate === selectedDate && slot[4].toLowerCase() === 'disponible';
+        })
         .map(slot => slot[2].trim());
 
       if (slotsForDate.length === 0) {
         await flowDynamic(`😔 *No hay turnos disponibles para la fecha ${selectedDate}.*`);
-        return;
+        return gotoFlow(mainMenuFlow);
       }
 
-      // Guardamos los turnos disponibles en el estado
       await state.update({ slotsForDate });
 
       const slotsMessage = slotsForDate.map(time => `🕒 ${time}`).join('\n');
-      await flowDynamic(`✅ Turnos disponibles para la fecha ${selectedDate}:\n\n${slotsMessage}\n\n`);
-      await flowDynamic('➡️ Por favor, selecciona el turno que deseas reservar, tambien puedes copiar y pegar el horario 😉:');
+      await flowDynamic(
+        `✅ Turnos disponibles para la fecha ${selectedDate}:\n\n${slotsMessage}\n\n`
+      );
+      await flowDynamic(
+        '➡️ Por favor, selecciona el turno que deseas reservar, también puedes copiar y pegar el horario 😉:'
+      );
     }
   )
   .addAnswer(
@@ -266,38 +292,30 @@ const availableMonthsFlow = addKeyword(['turnos'])
     { capture: true },
     async (ctx, { state, flowDynamic, gotoFlow }) => {
       const selectedTime = ctx.body.trim();
+      const slotsForDate = (await state.get('slotsForDate')) || [];
 
-      // Recuperar los turnos disponibles para la fecha seleccionada desde el estado
-      const slotsForDate = await state.get('slotsForDate') || [];
-
-      // Validar si el turno ingresado está en la lista de turnos disponibles
       if (!slotsForDate.includes(selectedTime)) {
         await flowDynamic(
           `❌ El turno que ingresaste no es válido.\n` +
           `🔄 Volviendo al menú principal. Por favor, intenta nuevamente.`
         );
-        // Redirigir al menú principal
         return gotoFlow(mainMenuFlow);
       }
 
       await state.update({ selectedTime });
 
-      // Recuperar datos del estado
       const nombre = await state.get('nombre');
       const telefono = await state.get('telefono');
       const obraSocial = await state.get('obraSocial');
       const selectedDate = await state.get('selectedDate');
 
-      // Asignar el turno en Google Sheets
       try {
         await assignSlot(selectedDate, selectedTime, `${nombre} - ${obraSocial}`, telefono);
-
-        // Confirmación de la reserva
         await flowDynamic(
           `🛎️ *Turno reservado exitosamente* para *${nombre}*.\n\n` +
           `📅 Fecha: ${selectedDate}\n` +
           `🕒 Horario: ${selectedTime}\n\n` +
-          '🤗 ¡Te esperamos con mucho gusto! 🎉' 
+          '🤗 ¡Te esperamos con mucho gusto! 🎉'
         );
         await resetUserData(state);
         await flowDynamic(
@@ -312,10 +330,12 @@ const availableMonthsFlow = addKeyword(['turnos'])
     }
   );
 
+
+
 // **Inicialización del Bot**
 const main = async () => {
   const adapterFlow = createFlow([
-    initialValidationFlow, 
+    initialValidationFlow,
     userDataFlow,
     phoneFlow,
     obraSocialFlow,
@@ -330,7 +350,7 @@ const main = async () => {
   });
 
   httpServer(+PORT);
-  console.log(`Bot iniciado en el puerto: ${PORT}`);
+
 };
 
 main();
