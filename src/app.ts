@@ -6,6 +6,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url'; // Import necesario
 import { dirname } from 'path'; // Import necesario
+import { userDataFlow } from './flows/userDataFlow';
+import { getClienteByUserId } from './db';
+import { initialValidationFlow } from './flows/initialValidationFlow'; // 👈 este sí puede importar initialValidationFlow
+import { adminFlow } from './flows/adminFlow';
+import { adminValidationFlow } from './flows/adminValidationFlow';
+import { cancelTurnoFlow } from './flows/cancelTurnoFlow';
+
 
 
 
@@ -51,89 +58,24 @@ const marcarDatosCompletos = async (state) => {
 
 
 
-// **Validación Inicial del Menú**
-const initialValidationFlow = addKeyword(['menu'])
-  .addAnswer(
-    '❌ Debes completar tus datos personales antes de acceder al menú. Redirigiendo...',
-    { capture: false },
-    async (ctx, { state, gotoFlow, flowDynamic }) => {
-      const dataComplete = await validateUserData(state);
 
-      if (!dataComplete) {
-        // If data is incomplete, redirect to userDataFlow
-        return gotoFlow(userDataFlow);
-      }
 
-      if (inMainMenu) {
-        // If already in the menu, show the menu without re-validating
-        return await flowDynamic('🔸 Selecciona una opción:\n1. Información sobre el lugar 🏥\n2. Reservas 📆');
-      }
 
-      // If not in the menu, mark the state and go to the main menu
-      inMainMenu = true;
-      return gotoFlow(mainMenuFlow);
-    }
-  );
-
-// **Flujo para capturar Nombre y Apellido**
-const userDataFlow = addKeyword(['hola', 'hi', 'hello', 'buenas', 'turno', 'quiero', 'solicitar'])
-  .addAnswer(
-    `👋 ¡Bienvenido/a a *Salud Pulmonar Salta*! 🏥\n\n` +
-    `Para reservar un turno con nosotros por favor, escribe tu *Nombre y Apellido*:`,
-    { capture: true },
-    async (ctx, { state, flowDynamic, gotoFlow }) => {
-      if (!isValidString(ctx.body) || isValidNumber(ctx.body)) {
-        await flowDynamic('❌ Datos incorrectos. Por favor, escribe tu nombre y apellido.');
-        return gotoFlow(userDataFlow);
-      }
-      await state.update({ nombre: ctx.body });
-      await flowDynamic(`Perfecto, *${ctx.body}*`);
-      return gotoFlow(phoneFlow);
-    }
-  );
-
-// **Flujo para capturar Número de Teléfono**
-const phoneFlow = addKeyword(['phone'])
-  .addAnswer(
-    '📞 Por favor escribe tu *número de teléfono* (prefijo sin 0 y numero de linea sin 15):',
-    { capture: true },
-    async (ctx, { state, flowDynamic, gotoFlow }) => {
-      if (!isValidNumber(ctx.body)) {
-        await flowDynamic('❌ El número debe contener solo dígitos. Inténtalo nuevamente.');
-        return gotoFlow(phoneFlow);
-      }
-      await state.update({ telefono: ctx.body });
-      await flowDynamic('📲 ¡Gracias por compartir tu número de teléfono! ☎️');
-      return gotoFlow(obraSocialFlow);
-    }
-  );
-
-// **Flujo para capturar Obra Social**
-const obraSocialFlow = addKeyword(['social'])
-  .addAnswer(
-    '🔰 Por último *Obra Social y Plan de cobertura*: ',
-    { capture: true },
-    async (ctx, { state, flowDynamic, gotoFlow }) => {
-      if (!isValidString(ctx.body)) {
-        await flowDynamic('❌ Datos incorrectos. Por favor, escribe tu obra social');
-        return gotoFlow(obraSocialFlow);
-      }
-      await state.update({ obraSocial: ctx.body });
-      await marcarDatosCompletos(state); // Marcar datos como completos
-      await flowDynamic('✅ Datos personales guardados correctamente ✅');
-      return gotoFlow(mainMenuFlow);
-    }
-  );
 
 let inMainMenu = false;
 
 // **Menú Principal**
-const mainMenuFlow = addKeyword(['volver'])
+export const mainMenuFlow = addKeyword(['volver'])
   .addAnswer(
-    '🔸 Por favor selecciona una opción:\n\n1️⃣ Información 🏥\n2️⃣ Turnos 📆',
+    '🔸 Por favor selecciona una opción:\n\n' +
+    '1️⃣ Información 🏥\n' +
+    '2️⃣ Reserva De Turnos 📆\n' +
+    '3️⃣ Cancelación De Turnos ❌\n\n' +
+    '📝 O escribe *salir* para finalizar la conversación.',
     { capture: true },
-    async (ctx, { flowDynamic, gotoFlow }) => {
+    async (ctx, { flowDynamic, gotoFlow, endFlow }) => {
       const opcion = ctx.body.trim();
+      const telefonoAdmin = '5493875051112'; // 👈 Tu número de admin
 
       if (opcion === '1') {
         try {
@@ -144,12 +86,37 @@ const mainMenuFlow = addKeyword(['volver'])
           console.error('Error al leer el archivo info.txt:', error);
           await flowDynamic('❌ Hubo un problema al mostrar la información.');
         }
-      } else if (opcion === '2') {
+        return;
+      }
+
+      if (opcion === '2') {
         inMainMenu = false; // Leaving the main menu
         return gotoFlow(availableMonthsFlow);
-      } else {
-        await flowDynamic('❌ Opción no válida. Por favor, selecciona una opción válida.');
       }
+
+      if (opcion === '3') {
+        inMainMenu = false; // Leaving the main menu
+        return gotoFlow(cancelTurnoFlow); // 🚀 Vamos al nuevo flujo de cancelación de turnos
+      }
+
+      if (opcion.toLowerCase() === 'salir') {
+        await flowDynamic('👋 ¡Gracias por comunicarte! ¡Te deseamos un excelente día! ✨');
+        return endFlow(); // 👈 Finalizamos la conversación
+      }
+
+      // 🚨 Antes de tirar error, validamos si es admin
+      if (opcion.toLowerCase() === 'admin') {
+        if (ctx.from === telefonoAdmin) {
+          await flowDynamic('✅ Acceso de administrador confirmado. Cargando menú...');
+          return gotoFlow(adminFlow);
+        } else {
+          await flowDynamic('❌ No tienes permisos de administrador.');
+          return;
+        }
+      }
+
+      // Si no es admin, salir ni una opción válida:
+      await flowDynamic('❌ Opción no válida. Por favor, selecciona una opción válida.');
     }
   );
 
@@ -293,7 +260,7 @@ const availableMonthsFlow = addKeyword(['turnos'])
     async (ctx, { state, flowDynamic, gotoFlow }) => {
       const selectedTime = ctx.body.trim();
       const slotsForDate = (await state.get('slotsForDate')) || [];
-
+  
       if (!slotsForDate.includes(selectedTime)) {
         await flowDynamic(
           `❌ El turno que ingresaste no es válido.\n` +
@@ -301,16 +268,19 @@ const availableMonthsFlow = addKeyword(['turnos'])
         );
         return gotoFlow(mainMenuFlow);
       }
-
+  
       await state.update({ selectedTime });
-
-      const nombre = await state.get('nombre');
-      const telefono = await state.get('telefono');
-      const obraSocial = await state.get('obraSocial');
+  
+      const userId = ctx.from;
+      const cliente = await getClienteByUserId(userId); // 🔥 Buscamos TODO de la base de datos
+      const nombre = cliente?.nombre || 'Paciente';
+      const obraSocial = cliente?.obraSocial || '';
+      const telefono = cliente?.telefono || '';
+  
       const selectedDate = await state.get('selectedDate');
-
+  
       try {
-        await assignSlot(selectedDate, selectedTime, `${nombre} - ${obraSocial}`, telefono);
+        await assignSlot(selectedDate, selectedTime, `${nombre} - ${obraSocial}`, telefono); // 🔥 pasamos teléfono bien ahora
         await flowDynamic(
           `🛎️ *Turno reservado exitosamente* para *${nombre}*.\n\n` +
           `📅 Fecha: ${selectedDate}\n` +
@@ -318,14 +288,30 @@ const availableMonthsFlow = addKeyword(['turnos'])
           '🤗 ¡Te esperamos con mucho gusto! 🎉'
         );
         await resetUserData(state);
-        await flowDynamic(
-          `🔄 Si deseas reservar otro turno, tendrás que ingresar tus datos nuevamente.`
-        );
+  
+        await flowDynamic('➡️ Escribe *volver* para regresar al menú principal o *salir* para finalizar la conversación.');
       } catch (error) {
         console.error(error);
         await flowDynamic(
           `❌ Hubo un error al reservar tu turno. Por favor, inténtalo de nuevo más tarde.`
         );
+      }
+    }
+  )
+  .addAnswer(
+    '',
+    { capture: true },
+    async (ctx, { gotoFlow, flowDynamic }) => {
+      const opcion = ctx.body.trim().toLowerCase();
+  
+      if (opcion === 'volver') {
+        await flowDynamic('🔙 Volviendo al menú principal...');
+        return gotoFlow(mainMenuFlow);
+      } else if (opcion === 'salir') {
+        await flowDynamic('👋 ¡Gracias por comunicarte! ¡Que tengas un excelente día! ✨');
+        return;
+      } else {
+        await flowDynamic('❌ Opción inválida. Escribe *volver* o *salir*.');
       }
     }
   );
@@ -335,12 +321,13 @@ const availableMonthsFlow = addKeyword(['turnos'])
 // **Inicialización del Bot**
 const main = async () => {
   const adapterFlow = createFlow([
-    initialValidationFlow,
+    adminValidationFlow, 
     userDataFlow,
-    phoneFlow,
-    obraSocialFlow,
+    initialValidationFlow,
     mainMenuFlow,
     availableMonthsFlow,
+    adminFlow,
+    cancelTurnoFlow,
   ]);
 
   const { handleCtx, httpServer } = await createBot({
@@ -348,6 +335,8 @@ const main = async () => {
     provider: adapterProvider,
     database: new Database(),
   });
+
+
 
   httpServer(+PORT);
 

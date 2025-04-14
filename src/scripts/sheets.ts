@@ -80,6 +80,9 @@ async function readSheet(range: string): Promise<any[][] | void> {
 
 /**
  * Función para leer todos los slots disponibles de Google Sheets
+ * 
+ * 
+ * 
  */
 const getAvailableSlots = async (): Promise<any[][]> => {
     const sheets = google.sheets({ version: 'v4', auth });
@@ -151,5 +154,97 @@ const assignSlot = async (
         console.error('Error al asignar el turno:', error);
     }
 };
+/**
+ * Función para obtener un turno reservado a partir del teléfono
+ */
+const getTurnoByTelefono = async (telefono: string): Promise<any | null> => {
+    const sheetsInstance = google.sheets({ version: 'v4', auth });
 
-export { writeToSheet, readSheet, getAvailableSlots, assignSlot };
+    try {
+        const response = await sheetsInstance.spreadsheets.values.get({
+            spreadsheetId: spreadsheetsId,
+            range: `Sheet1!A2:G`, // ✅ Tu hoja actual
+        });
+
+        const rows = response.data.values || [];
+
+        // 🛠️ Comparar contra columna 6 (índice 6) que es el teléfono
+        const turnoEncontrado = rows.find((row) => row[6] === telefono);
+
+        if (turnoEncontrado) {
+            return {
+                fecha: turnoEncontrado[1],        // Columna B: Fecha
+                horaInicio: turnoEncontrado[2],   // Columna C: Hora de inicio
+                horaFin: turnoEncontrado[3],      // Columna D: Hora de fin
+                estado: turnoEncontrado[4],       // Columna E: Estado (Reservado, Disponible)
+                nombrePaciente: turnoEncontrado[5], // Columna F: Nombre del paciente
+                telefono: turnoEncontrado[6],     // Columna G: Teléfono (ahora correcto)
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error al buscar turno por teléfono:', error);
+        return null;
+    }
+};
+
+/**
+ * Función para cancelar un turno reservado
+ */
+/**
+ * Función para cancelar un turno en Google Sheets
+ */
+const cancelarTurno = async (fecha: string, horaInicio: string): Promise<void> => {
+    const sheets = google.sheets({ version: 'v4', auth });
+  
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: spreadsheetsId,
+        range: `Sheet1!A2:G`,
+      });
+  
+      const rows = response.data.values || [];
+  
+      const formattedDate = fecha.trim().toLowerCase();
+      const formattedStartTime = horaInicio.trim().toLowerCase();
+  
+      const rowIndex = rows.findIndex((row) => {
+        return (
+          row[1]?.trim().toLowerCase() === formattedDate &&
+          row[2]?.trim().toLowerCase() === formattedStartTime &&
+          row[4]?.trim().toLowerCase() === 'reservado'
+        );
+      });
+  
+      if (rowIndex === -1) {
+        console.error('Turno no encontrado para cancelar.');
+        return;
+      }
+  
+      // ✅ Cancelamos el turno: volver a "Disponible" y vaciar nombre y teléfono
+      rows[rowIndex][4] = 'Disponible'; // Estado
+      rows[rowIndex][5] = '';           // Nombre del paciente
+      rows[rowIndex][6] = '';           // Teléfono
+  
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: spreadsheetsId,
+        range: `Sheet1!A${rowIndex + 2}:G${rowIndex + 2}`, // +2 porque Sheet1 empieza en A2
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [rows[rowIndex]],
+        },
+      });
+  
+      console.log('✅ Turno cancelado exitosamente.');
+    } catch (error) {
+      console.error('Error al cancelar el turno:', error);
+    }
+  };
+
+
+  
+
+
+
+export { writeToSheet, readSheet, getAvailableSlots, assignSlot, getTurnoByTelefono, cancelarTurno };
