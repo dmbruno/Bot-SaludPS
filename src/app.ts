@@ -69,8 +69,8 @@ export const mainMenuFlow = addKeyword(['volver'])
   .addAnswer(
     '🔸 Por favor selecciona una opción:\n\n' +
     '1️⃣ Información 🏥\n' +
-    '2️⃣ Reserva De Turnos 📆\n' +
-    '3️⃣ Cancelación De Turnos ❌\n\n' +
+    '2️⃣ Reserva de Turnos 📆\n' +
+    '3️⃣ Cancelación de Turnos ❌\n\n' +
     '📝 O escribe *salir* para finalizar la conversación.',
     { capture: true },
     async (ctx, { flowDynamic, gotoFlow, endFlow }) => {
